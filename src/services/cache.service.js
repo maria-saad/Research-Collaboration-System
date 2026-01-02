@@ -1,9 +1,14 @@
-import { redis } from "../config/redis.js";
+const redis = require("../config/redis");
 
-export const getCachedProfile = async (key) => {
-  return await redis.get(key);
+// Get cached data by key
+const getCachedData = async (key) => {
+  const data = await redis.get(key);
+  return data ? JSON.parse(data) : null;
 };
 
-export const setCachedProfile = async (key, data) => {
-  await redis.setex(key, 300, JSON.stringify(data));
+// Set cache with TTL (5 minutes)
+const setCachedData = async (key, value) => {
+  await redis.setex(key, 300, JSON.stringify(value));
 };
+
+module.exports = { getCachedData, setCachedData };

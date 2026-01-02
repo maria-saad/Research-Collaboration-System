@@ -1,23 +1,36 @@
-import Researcher from "../models/Researcher.js";
-import { driver } from "../config/neo4j.js";
-import { getCachedProfile, setCachedProfile } from "./cache.service.js";
+const Researcher = require("../models/Researcher");
+const driver = require("../config/neo4j");
+const { getCachedData, setCachedData } = require("./cache.service");
 
-export const buildResearcherProfile = async (id) => {
+const getCombinedProfile = async (id) => {
   const cacheKey = `profile:${id}`;
-  const cached = await getCachedProfile(cacheKey);
-  if (cached) return JSON.parse(cached);
 
-  const researcher = await Researcher.findById(id);
+  // 1. Check Redis first
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  // 2. MongoDB: researcher info
+  const researcher = await Researcher.findById(id).lean();
+
+  // 3. Neo4j: collaborators
   const session = driver.session();
-
   const result = await session.run(
-    "MATCH (r:Researcher {id: $id})-[:COLLABORATES_WITH]->(c) RETURN c.name",
+    `MATCH (r:Researcher {id: $id})-[:COLLABORATES_WITH]->(c)
+     RETURN c.id AS collaboratorId, c.name AS collaboratorName`,
     { id }
   );
 
-  const collaborators = result.records.map(r => r.get(0));
+  const collaborators = result.records.map(r => ({
+    id: r.get("collaboratorId"),
+    name: r.get("collaboratorName")
+  }));
+
   const profile = { researcher, collaborators };
 
-  await setCachedProfile(cacheKey, profile);
+  // 4. Cache in Redis
+  await setCachedData(cacheKey, profile);
+
   return profile;
 };
+
+module.exports = { getCombinedProfile };
